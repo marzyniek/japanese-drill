@@ -283,9 +283,13 @@ const NUMBER_SETS = [
   ["phone", "Phone numbers"],
 ];
 
+// Hiragana ("kana") and katakana ("kata") modes share these controls
+const KANA_MODES = ["kana", "kata"];
+const SCRIPT_NAME = { kana: "hiragana", kata: "katakana" };
+
 const KANA_HINTS = {
-  read: "Type the romaji for the hiragana.",
-  find: "Pick the hiragana for the romaji.",
+  read: (script) => `Type the romaji for the ${script}.`,
+  find: (script) => `Pick the ${script} for the romaji.`,
 };
 
 // [id, chip label, "kana romaji|alternative ..." entries].
@@ -306,8 +310,20 @@ const KANA_SETS = [
   ["combo", "きゃ combinations", "きゃ kya,きゅ kyu,きょ kyo,しゃ sha|sya,しゅ shu|syu,しょ sho|syo,ちゃ cha|tya|cya,ちゅ chu|tyu|cyu,ちょ cho|tyo|cyo,にゃ nya,にゅ nyu,にょ nyo,ひゃ hya,ひゅ hyu,ひょ hyo,みゃ mya,みゅ myu,みょ myo,りゃ rya,りゅ ryu,りょ ryo,ぎゃ gya,ぎゅ gyu,ぎょ gyo,じゃ ja|jya|zya,じゅ ju|jyu|zyu,じょ jo|jyo|zyo,びゃ bya,びゅ byu,びょ byo,ぴゃ pya,ぴゅ pyu,ぴょ pyo"],
 ];
 
+// Hiragana -> katakana (the two blocks are 0x60 code points apart)
+const toKatakana = (s) => s.replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
+// Same rows as hiragana, plus the extended sounds used for foreign words
+const KATA_SETS = [
+  ...KANA_SETS.map(([id, label, list]) => [id, toKatakana(label), toKatakana(list)]),
+  ["extra", "ファ ティ ヴ", "ファ fa,フィ fi,フェ fe,フォ fo,ティ ti,ディ di,トゥ tu,ドゥ du,デュ dyu,ウィ wi,ウェ we,ウォ wo,シェ she,ジェ je,チェ che,ヴ vu,ヴァ va"],
+];
+
 // Characters that are easy to mix up; "Find it" prefers these as wrong options
-const LOOKALIKES = ["あおめぬ", "ねれわ", "るろ", "はほけ", "さきち", "いりこに", "しつ", "ちらさ", "うつ", "くへ", "まも", "たな", "ゆよ", "そん"];
+const LOOKALIKES = {
+  kana: ["あおめぬ", "ねれわ", "るろ", "はほけ", "さきち", "いりこに", "しつ", "ちらさ", "うつ", "くへ", "まも", "たな", "ゆよ", "そん"],
+  kata: ["シツソン", "クタケ", "ウワフラヲ", "ヌスマア", "コユロエ", "チテ", "ナメノ", "ルレ", "ホオ", "ヤセ", "キモ"],
+};
 
 const ROUND_SIZE = { words: 20, numbers: 15, situations: 12, sentences: 10, kana: 20 };
 
@@ -424,11 +440,12 @@ const settings = {
   numSets: loadSet("numSets", ["small", "tens"], NUMBER_SETS),
   numDir: store.get("numDir", "say"),    // "say", "read" or "listen"
   kanaSets: loadSet("kanaSets", ["a", "k", "s"], KANA_SETS),
+  kataSets: loadSet("kataSets", ["a", "k", "s"], KATA_SETS),
   kanaDir: store.get("kanaDir", "read"), // "read" or "find"
 };
 if (!KANA_HINTS[settings.kanaDir]) settings.kanaDir = "read";
 if (!NUMBER_HINTS[settings.numDir]) settings.numDir = "say";
-if (!MODE_HINTS[settings.mode] && settings.mode !== "num" && settings.mode !== "kana") settings.mode = "quiz";
+if (!MODE_HINTS[settings.mode] && settings.mode !== "num" && !KANA_MODES.includes(settings.mode)) settings.mode = "quiz";
 
 // The round in progress (see startRound)
 let round = null;
@@ -444,6 +461,7 @@ function saveSettings() {
   store.set("numSets", [...settings.numSets]);
   store.set("numDir", settings.numDir);
   store.set("kanaSets", [...settings.kanaSets]);
+  store.set("kataSets", [...settings.kataSets]);
   store.set("kanaDir", settings.kanaDir);
 }
 
@@ -500,20 +518,23 @@ function renderControls() {
   );
 
   const isNum = settings.mode === "num";
-  const isKana = settings.mode === "kana";
+  const isKana = KANA_MODES.includes(settings.mode);
   $("#hint").textContent = isNum
     ? NUMBER_HINTS[settings.numDir]
     : isKana
-      ? KANA_HINTS[settings.kanaDir]
+      ? KANA_HINTS[settings.kanaDir](SCRIPT_NAME[settings.mode])
       : MODE_HINTS[settings.mode];
 
-  // Hiragana options
+  // Hiragana / katakana options
   $("#kanaOpts").hidden = !isKana;
   $("#kanaSeg").hidden = !isKana;
-  $("#kanaChips").innerHTML = KANA_SETS.map(
-    ([key, label]) =>
-      `<button class="chip" data-set="${key}" lang="ja" aria-pressed="${settings.kanaSets.has(key)}">${label}</button>`
-  ).join("");
+  if (isKana) {
+    const script = kanaScript();
+    $("#kanaChips").innerHTML = script.sets.map(
+      ([key, label]) =>
+        `<button class="chip" data-set="${key}" lang="ja" aria-pressed="${script.selected.has(key)}">${label}</button>`
+    ).join("");
+  }
   document.querySelectorAll("#kanaSeg button").forEach((b) =>
     b.setAttribute("aria-pressed", b.dataset.kd === settings.kanaDir)
   );
@@ -624,7 +645,7 @@ $("#numSeg").addEventListener("click", (e) => {
 $("#kanaChips").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  toggleKeepOne(settings.kanaSets, b.dataset.set);
+  toggleKeepOne(kanaScript().selected, b.dataset.set);
   applyChange();
 });
 
@@ -916,8 +937,9 @@ function startRound(pool) {
       seen.add(item.prompt);
       items.push(item);
     }
-  } else if (settings.mode === "kana") {
-    const pool = hiragana.filter((k) => settings.kanaSets.has(k.set));
+  } else if (KANA_MODES.includes(settings.mode)) {
+    const script = kanaScript();
+    const pool = script.chars.filter((k) => script.selected.has(k.set));
     // Small selections repeat characters to fill the round, but never back to back
     items = [];
     while (items.length < ROUND_SIZE.kana) {
@@ -954,6 +976,7 @@ function render() {
     sit: renderSituation,
     sen: renderSentence,
     kana: renderKana,
+    kata: renderKana,
   };
   renderers[settings.mode]();
 }
@@ -1326,32 +1349,46 @@ function renderSentence() {
 
 
 /* ==========================================================================
-   Hiragana
+   Hiragana and katakana
    ========================================================================== */
 
 // [{ kana, romaji: [accepted spellings], set }]
-const hiragana = KANA_SETS.flatMap(([set, , list]) =>
-  list.split(",").map((entry) => {
-    const [kana, romaji] = entry.split(" ");
-    return { kana, romaji: romaji.split("|"), set };
-  })
-);
+const parseKanaSets = (sets) =>
+  sets.flatMap(([set, , list]) =>
+    list.split(",").map((entry) => {
+      const [kana, romaji] = entry.split(" ");
+      return { kana, romaji: romaji.split("|"), set };
+    })
+  );
+
+const KANA_SCRIPTS = {
+  kana: { sets: KANA_SETS, chars: parseKanaSets(KANA_SETS), lookalikes: LOOKALIKES.kana },
+  kata: { sets: KATA_SETS, chars: parseKanaSets(KATA_SETS), lookalikes: LOOKALIKES.kata },
+};
+
+// The script being drilled, with the rows the user has selected for it
+function kanaScript() {
+  const selected = settings.mode === "kata" ? settings.kataSets : settings.kanaSets;
+  return { ...KANA_SCRIPTS[settings.mode === "kata" ? "kata" : "kana"], selected };
+}
 
 // Wrong options for "Find it": lookalikes first, then the same row,
 // then anything selected, then anything at all.
 function kanaDistractors(item, count) {
-  const lookalike = LOOKALIKES.find((group) => item.kana.length === 1 && group.includes(item.kana)) || "";
+  const script = kanaScript();
+  const lookalike = script.lookalikes.find((group) => item.kana.length === 1 && group.includes(item.kana)) || "";
   const tiers = [
-    hiragana.filter((k) => k.kana.length === 1 && lookalike.includes(k.kana)),
-    hiragana.filter((k) => k.set === item.set),
-    hiragana.filter((k) => settings.kanaSets.has(k.set)),
-    hiragana,
+    script.chars.filter((k) => k.kana.length === 1 && lookalike.includes(k.kana)),
+    script.chars.filter((k) => k.set === item.set),
+    script.chars.filter((k) => script.selected.has(k.set)),
+    script.chars,
   ];
   const out = [];
   for (const tier of tiers) {
     for (const k of shuffle(tier)) {
-      // Skip the answer and anything that reads the same (じ/ぢ, ず/づ)
-      if (out.length >= count || k === item || k.romaji[0] === item.romaji[0]) continue;
+      // Skip the answer and anything that can be read the same (じ/ぢ, チ "ti"/ティ)
+      const readsSame = k.romaji.includes(item.romaji[0]) || item.romaji.includes(k.romaji[0]);
+      if (out.length >= count || k === item || readsSame) continue;
       if (!out.includes(k)) out.push(k);
     }
   }
@@ -1409,7 +1446,7 @@ function renderKana() {
 function missedItemHTML(item) {
   if (WORD_MODES.includes(settings.mode)) return `<li><span class="w">${item.jp}</span><span>${item.en}</span></li>`;
   if (settings.mode === "num") return `<li><span>${item.prompt}</span><span class="w">${item.jp}</span></li>`;
-  if (settings.mode === "kana") return `<li><span class="w" lang="ja">${item.kana}</span><span class="w">${item.romaji[0]}</span></li>`;
+  if (KANA_MODES.includes(settings.mode)) return `<li><span class="w" lang="ja">${item.kana}</span><span class="w">${item.romaji[0]}</span></li>`;
   if (settings.mode === "sit") return `<li><span>${item[0]}</span><span class="w">${item[1]}</span></li>`;
   return `<li><span>${item.en}</span><span class="w">${formatSentence(item.jp)}</span></li>`;
 }

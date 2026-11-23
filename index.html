@@ -13,7 +13,7 @@
 <body>
   <div class="wrap">
     <h1>Lessons 1–2 vocabulary</h1>
-    <p class="sub">Greetings, school life, time, numbers, family, pointing words, food, things, places and shopping, plus hiragana.</p>
+    <p class="sub">Greetings, school life, time, numbers, family, pointing words, food, things, places and shopping, plus hiragana and katakana.</p>
 
     <!-- Exercise type -->
     <nav class="modes" id="modes" aria-label="Exercise type">
@@ -24,6 +24,7 @@
       <button data-mode="sit">Situations</button>
       <button data-mode="sen">Sentences</button>
       <button data-mode="kana">Hiragana</button>
+      <button data-mode="kata">Katakana</button>
     </nav>
     <p class="hint" id="hint"></p>
 
@@ -37,9 +38,9 @@
       <div class="chips" id="numChips" role="group" aria-label="Number sets"></div>
     </div>
 
-    <!-- Hiragana-row chips (filled by script.js) -->
+    <!-- Hiragana/katakana-row chips (filled by script.js) -->
     <div id="kanaOpts">
-      <div class="chips" id="kanaChips" role="group" aria-label="Hiragana rows"></div>
+      <div class="chips" id="kanaChips" role="group" aria-label="Kana rows"></div>
     </div>
 
     <div class="row">
@@ -48,7 +49,7 @@
         <button data-nd="read">Read it</button>
         <button data-nd="listen">Listen</button>
       </div>
-      <div class="seg" id="kanaSeg" role="group" aria-label="How to practise hiragana">
+      <div class="seg" id="kanaSeg" role="group" aria-label="How to practise kana">
         <button data-kd="read">Read it</button>
         <button data-kd="find">Find it</button>
       </div>
